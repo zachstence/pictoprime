@@ -1,15 +1,12 @@
 // @ts-check
 
-import { promisify } from 'util'
-import { exec } from 'child_process'
+import { execSync } from 'child_process'
 import { cpus } from 'os';
 import { createHash } from 'crypto';
 
 import log from 'loglevel'
 
 import { generatePrimes } from './generatePrimes.js'
-
-const execPromise = promisify(exec);
 
 const SMALL_PRIMES = generatePrimes(2000).map(p => BigInt(p))
 
@@ -204,7 +201,7 @@ async function findAlmostSophieGermain (val, simultaneous) {
             else tests.push(next.value)
         }
 
-        const primeCheck = await Promise.all(tests.map(test => typeof test === 'bigint' ? test * BigInt(val) + 1n : 0n).map(i => execPromise(`openssl prime ${i.toString()}`)))
+        const primeCheck = await Promise.all(tests.map(test => typeof test === 'bigint' ? test * BigInt(val) + 1n : 0n).map(i => execSync(`openssl prime ${i.toString()}`)))
         const results = primeCheck.filter(i => i.stdout.includes('is prime')).map(i => i.stdout)
 
         if (results.length) return extractResult(results[0])
@@ -229,7 +226,7 @@ export async function findPrime (original, sophie = false) {
     let attempts = 0
     let failedViable = 0
 
-    const simultaneous = cpus().length
+    const simultaneous = cpus().length / 2
 
     const tested = new Set()
     const rekeyAt = Math.floor(keyFrame.length / 3)
@@ -241,19 +238,22 @@ export async function findPrime (original, sophie = false) {
     log.debug(`Starting process, rekey at ${rekeyAt} attempts, with ${simultaneous} checks each attempt.`)
 
     while (true) {
-        log.debug(attempts)
+        log.debug({ attempts })
 
         const tests = generateTests(tested, keyFrame, simultaneous)
+        log.debug({ tests: tests.length })
 
         // Turn the tests into `openssl prime` processes, and wait for them to complete.
-        const result = await Promise.all(tests.map(i => execPromise(`openssl prime ${i}`)))
+        const result = await Promise.all(tests.map(i => execSync(`openssl prime ${i}`)))
+        log.debug({ result })
 
         // Filter out any of the results that are not prime.
-        const successes = result.filter(i => !i.stdout.includes('not prime'))
+        const successes = result.filter(i => !i.toString().includes('not prime'))
+        log.debug({ successes: successes.length })
         
         // If we had any successes, we can stop.
         if(successes.length) {
-            const prime = successes.map(i => extractResult(i.stdout))[0]
+            const prime = successes.map(i => extractResult(i.toString()))[0]
             const result = { 
                 prime,
                 attempts,
